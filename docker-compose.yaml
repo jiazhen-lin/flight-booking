@@ -1,0 +1,38 @@
+version: "3.4"
+
+services:
+  db:
+    image: postgres:14.4-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_HOST_AUTH_METHOD=trust
+      - POSTGRES_USER=flight_admin
+      - POSTGRES_DB=flight_app
+    restart: always
+    healthcheck:
+      test: pg_isready -U flight_admin -d flight_app
+      interval: 10s
+      timeout: 3s
+      retries: 5
+  
+  flight_app:
+    image: flight_app:latest
+    ports: 
+      - "8080:8080"
+    env_file:
+      - docker/config/.env
+    depends_on:
+      - db
+    restart: always
+  
+  migrate:
+    image: migrate/migrate
+    volumes:
+        - ./migrations:/migrations
+    command: ["-path", "/migrations", "-database", "postgres://flight_admin@db:5432/flight_app?sslmode=disable", "up"]
+    depends_on:
+      - db
+    links: 
+      - db
+    restart: on-failure

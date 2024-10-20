@@ -1,0 +1,1 @@
+CREATE INDEX idx_flight_id ON bookings (flight_id);
