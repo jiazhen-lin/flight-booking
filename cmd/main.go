@@ -38,19 +38,11 @@ func initConfig() (*config, error) {
 	}, nil
 }
 
-func main() {
-	logrus.SetLevel(logrus.DebugLevel)
-
-	// init
-	config, err := initConfig()
-	if err != nil {
-		logrus.Fatalf("init config: %v", err)
-	}
-
+func initDB(conf *config) (*gorm.DB, error) {
 	engine, err := gorm.Open(
 		postgres.New(
 			postgres.Config{
-				DSN: config.dbArg,
+				DSN: conf.dbArg,
 			},
 		),
 	)
@@ -66,10 +58,29 @@ func main() {
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(10)
 
-	flightRepo := adapter.NewFlightPostgresRepository(engine)
+	return engine, nil
+}
+
+func main() {
+	logrus.SetLevel(logrus.DebugLevel)
+
+	// init
+	config, err := initConfig()
+	if err != nil {
+		logrus.Fatalf("init config: %v", err)
+	}
+	db, err := initDB(config)
+	if err != nil {
+		logrus.Fatalf("init db: %v", err)
+	}
+
+	flightRepo := adapter.NewFlightPostgresRepository(db)
 	flightService := service.NewFlightService(flightRepo)
 	application := app.NewApplication(flightService)
-	server := app.NewHTTPServer(config.httpAddr, application)
+	server, err := app.NewHTTPServer(config.httpAddr, application)
+	if err != nil {
+		logrus.Fatalf("init http server: %v", err)
+	}
 
 	// start http server
 	go func() {

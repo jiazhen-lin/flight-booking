@@ -14,4 +14,5 @@ migrate_up:
 	docker run --rm -v "$(shell pwd)/migrations:/migrations" --network host migrate/migrate -path=/migrations/ -database "postgres://flight_admin@:5432/flight_app?sslmode=disable" up
 
 up:
+	make build_app
 	docker-compose up -d

@@ -2,6 +2,7 @@ package app
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -13,11 +14,13 @@ type Application struct {
 	FlightService service.FlightService
 }
 
-func NewApplication(flightService service.FlightService) *Application {
+func NewApplication(
+	flightService service.FlightService,
+) *Application {
 	return &Application{FlightService: flightService}
 }
 
-func NewHTTPServer(addr string, app *Application) *http.Server {
+func NewHTTPServer(addr string, app *Application) (*http.Server, error) {
 	r := gin.Default()
 	r.ContextWithFallback = true
 
@@ -29,10 +32,22 @@ func NewHTTPServer(addr string, app *Application) *http.Server {
 	flightHandler := router.NewFlightHandler(app.FlightService)
 	flightGroup := v1.Group("/flights")
 	flightGroup.GET("/search", flightHandler.Search)
-	flightGroup.POST("/book", flightHandler.Book)
+
+	bookingRateLimiter, err := service.NewMemoryTokenBucketRateLimiter(service.TokenBucketConfig{
+		Key:      "/v1/flights/book",
+		Duration: 100 * time.Millisecond,
+		Burst:    10,
+	})
+	if err != nil {
+		return nil, err
+	}
+	flightGroup.POST("/book",
+		router.Limiter(bookingRateLimiter),
+		flightHandler.Book,
+	)
 
 	return &http.Server{
 		Addr:    addr,
 		Handler: r,
-	}
+	}, nil
 }

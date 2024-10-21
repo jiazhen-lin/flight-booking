@@ -108,7 +108,7 @@ func (r *flightPostgresRepository) Book(ctx context.Context, flightID string, se
 			return err
 		}
 		if row.AvailableSeats < seats {
-			return domain.ErrFlightSeatUnavailable
+			return domain.ErrUnavailableFlightSeats
 		}
 
 		// update flight available seats
