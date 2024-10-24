@@ -71,12 +71,4 @@ func TestFindPaths(t *testing.T) {
 	require.Equal(t, flights[4].ID, paths[1].flights[0].ID)
 	require.Equal(t, flights[2].ID, paths[2].flights[0].ID)
 	require.Equal(t, flights[3].ID, paths[2].flights[1].ID)
-
-	// fmt.Println("paths: ", len(paths))
-	// for i, p := range paths {
-	// 	fmt.Printf("path %d: arrival time: %s, flights: %d, duration: %d seconds\n", i, p.arrivalTime.Format(time.DateTime), len(p.flights), p.durationSeconds)
-	// 	for j, f := range p.flights {
-	// 		fmt.Printf("  flight %d: id: %d, %d -> %d\n", j, f.ID, f.DepartureAirportID, f.ArrivalAirportID)
-	// 	}
-	// }
 }

@@ -103,10 +103,6 @@ func findShortestNPaths(
 				arrivalTime:     newArrivalTime,
 				durationSeconds: newDuration,
 			})
-
-			// fmt.Printf("pushing path %d: arrival time: %s (%s + %d seconds), duration: %d seconds, %+v\n",
-			// 	flight.ID, newArrivalTime.Format(time.DateTime), cur.arrivalTime.Format(time.DateTime),
-			// 	flight.DurationSeconds, newDuration, flight)
 		}
 
 		visited[cur.airport] = true

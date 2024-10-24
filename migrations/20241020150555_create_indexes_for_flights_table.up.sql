@@ -1,5 +1,3 @@
-CREATE INDEX idx_airport_departure_time ON flights (
-    departure_airport_id, 
-    arrival_airport_id, 
-    departure_time
+CREATE INDEX idx_departure_time_id ON flights (
+    departure_time, id
 );

@@ -99,21 +99,27 @@ func (s *flightService) estimatePaths(ctx context.Context, source, target domain
 	var lastID int64
 	availableSeats := true
 	for i := 0; i < 10000; i++ { // add a limitation for loop
-		tmp, err := s.repo.List(ctx, domain.ListFilter{
+		filter := domain.ListFilter{
 			DepartureTimeFrom: from,
 			DepartureTimeTo:   to,
 			AvailableSeats:    &availableSeats,
-			CursorID:          &lastID,
 			Limit:             500,
-		})
+		}
+		if lastID != 0 {
+			filter.CursorID = &lastID
+		}
+		tmp, err := s.repo.List(ctx, filter)
 		if err != nil {
 			return nil, err
 		}
 		if len(tmp) == 0 {
 			break
 		}
-		lastID = tmp[len(tmp)-1].ID
 		flights = append(flights, tmp...)
+		lastID = tmp[len(tmp)-1].ID
+		if tmp[len(tmp)-1].DepartureTime.After(from) {
+			from = tmp[len(tmp)-1].DepartureTime
+		}
 	}
 	logrus.Infof("total available flights: %d", len(flights))
 

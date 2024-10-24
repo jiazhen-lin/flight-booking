@@ -19,7 +19,7 @@ var (
 )
 
 // NOTE: this is a simple implementation of token bucket rate limiter implemented by golang.org/x/time/rate
-// We can use redis to implement for concurrency
+// We can use redis to implement more complicated strategies for distributed architecture
 type tokenBucketRateLimiter struct {
 	duration time.Duration
 	burst    int

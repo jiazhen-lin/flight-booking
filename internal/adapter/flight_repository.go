@@ -72,13 +72,16 @@ func (r *flightPostgresRepository) List(ctx context.Context, filter domain.ListF
 			query = query.Where("available_seats = 0")
 		}
 	}
-
 	if filter.CursorID != nil {
-		query = query.Where("id > ?", *filter.CursorID)
+		query = query.Where("(departure_time = ? AND id > ?) OR departure_time > ?",
+			filter.DepartureTimeFrom, *filter.CursorID, filter.DepartureTimeFrom,
+		)
+		query = query.Where("departure_time < ?", filter.DepartureTimeTo)
+	} else {
+		query = query.Where("departure_time BETWEEN ? AND ?", filter.DepartureTimeFrom, filter.DepartureTimeTo)
 	}
 
-	query = query.Where("departure_time BETWEEN ? AND ?", filter.DepartureTimeFrom, filter.DepartureTimeTo)
-	query = query.Order("id ASC").Limit(filter.Limit)
+	query = query.Order("departure_time ASC, id ASC").Limit(filter.Limit)
 
 	var rows []FlightRow
 	if err := query.Find(&rows).Error; err != nil {
