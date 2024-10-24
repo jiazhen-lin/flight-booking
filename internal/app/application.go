@@ -33,6 +33,7 @@ func NewHTTPServer(addr string, app *Application) (*http.Server, error) {
 	flightGroup := v1.Group("/flights")
 	flightGroup.GET("/search", flightHandler.Search)
 
+	// setup a rate limiter for booking API
 	bookingRateLimiter, err := service.NewMemoryTokenBucketRateLimiter(service.TokenBucketConfig{
 		Key:      "/v1/flights/book",
 		Duration: 100 * time.Millisecond,

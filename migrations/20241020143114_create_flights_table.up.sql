@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS flights(
-    id UUID PRIMARY KEY NOT NULL DEFAULT gen_random_uuid(),
+    id BIGSERIAL PRIMARY KEY,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL,
     number VARCHAR(10) NOT NULL,

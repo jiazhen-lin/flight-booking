@@ -6,14 +6,14 @@ import (
 )
 
 type ListFilter struct {
-	DepartureAirportID AirportID
-	ArrivalAirportID   AirportID
-	DepartureTimeFrom  time.Time
-	DepartureTimeTo    time.Time
-	Limit              int
+	DepartureTimeFrom time.Time
+	DepartureTimeTo   time.Time
+	AvailableSeats    *bool
+	CursorID          *int64
+	Limit             int
 }
 
 type FlightRepository interface {
 	List(ctx context.Context, filter ListFilter) ([]Flight, error)
-	Book(ctx context.Context, flightID string, seats int) error
+	Book(ctx context.Context, seats []FlightSeats) error
 }

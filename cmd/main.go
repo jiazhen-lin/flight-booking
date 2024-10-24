@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -25,11 +24,13 @@ type config struct {
 func initConfig() (*config, error) {
 	addr := os.Getenv("HTTP_ADDR")
 	if addr == "" {
-		return nil, fmt.Errorf("empty env HTTP_ADDR")
+		addr = ":8080"
+		// return nil, fmt.Errorf("empty env HTTP_ADDR")
 	}
 	dbArg := os.Getenv("DB_ARG")
 	if dbArg == "" {
-		return nil, fmt.Errorf("empty env DB_ARG")
+		dbArg = "postgres://flight_admin@0.0.0.0:5432/flight_app?sslmode=disable"
+		// return nil, fmt.Errorf("empty env DB_ARG")
 	}
 
 	return &config{

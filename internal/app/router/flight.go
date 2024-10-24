@@ -34,12 +34,13 @@ type searchResp struct {
 }
 
 type flightDetailResp struct {
-	Flights []flightResp `json:"flights"`
-	Price   string       `json:"price"`
+	Flights         []flightResp `json:"flights"`
+	Price           string       `json:"price"`
+	DurationSeconds int64        `json:"duration_seconds"`
 }
 
 type flightResp struct {
-	ID                 string `json:"id"`
+	ID                 int64  `json:"id"`
 	Number             string `json:"number"`
 	DepartureAirportID int    `json:"departure_airport_id"`
 	ArrivalAirportID   int    `json:"arrival_airport_id"`
@@ -53,60 +54,69 @@ type flightResp struct {
 func (h *flightHandler) Search(c *gin.Context) {
 	var req searchReq
 	if err := c.Bind(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	departureDate, err := time.Parse(time.DateOnly, req.DepartureDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	plans, nextCursor, err := h.service.Search(c, service.SearchFilter{
+	limit := 10 // by default
+	if req.Limit > 0 {
+		limit = req.Limit
+	}
+
+	paths, nextCursor, err := h.service.Search(c, service.SearchFilter{
 		DepartureAirportID: domain.AirportID(req.DepartureAirportID),
 		ArrivalAirportID:   domain.AirportID(req.ArrivalAirportID),
 		DepartureDate:      departureDate,
 		Cursor:             req.Cursor,
-		Limit:              req.Limit,
+		Limit:              limit,
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	resp := searchResp{
-		Flights:    make([]flightDetailResp, len(plans)),
+		Flights:    make([]flightDetailResp, len(paths)),
 		NextCursor: nextCursor,
 	}
-	for i, plan := range plans {
-		flight := flightResp{
-			ID:                 plan.Flights[0].ID,
-			Number:             plan.Flights[0].Number,
-			DepartureAirportID: int(plan.Flights[0].DepartureAirportID),
-			ArrivalAirportID:   int(plan.Flights[0].ArrivalAirportID),
-			DepartureTimestamp: plan.Flights[0].DepartureTime.Unix(),
-			DurationSeconds:    plan.Flights[0].DurationSeconds,
-			TotalSeats:         plan.Flights[0].TotalSeats,
-			AvailableSeats:     plan.Flights[0].AvailableSeats,
-			Price:              plan.Flights[0].Price.String(),
+	for i, path := range paths {
+		detail := flightDetailResp{
+			Flights:         make([]flightResp, len(path.Flights)),
+			Price:           path.Price.String(),
+			DurationSeconds: path.DurationSeconds,
 		}
-		resp.Flights[i] = flightDetailResp{
-			Flights: []flightResp{flight},
-			Price:   plan.Price.String(),
+		for j, flight := range path.Flights {
+			detail.Flights[j] = flightResp{
+				ID:                 flight.ID,
+				Number:             flight.Number,
+				DepartureAirportID: int(flight.DepartureAirportID),
+				ArrivalAirportID:   int(flight.ArrivalAirportID),
+				DepartureTimestamp: flight.DepartureTime.Unix(),
+				DurationSeconds:    flight.DurationSeconds,
+				TotalSeats:         flight.TotalSeats,
+				AvailableSeats:     flight.AvailableSeats,
+				Price:              flight.Price.String(),
+			}
 		}
+		resp.Flights[i] = detail
 	}
 
 	c.JSON(http.StatusOK, resp)
 }
 
 type bookReq struct {
-	Flights []bookFlight `json:"flights"`
+	Flights []flightSeats `json:"flights"`
 }
 
-type bookFlight struct {
-	FlightID string `json:"flight_id"`
-	Seats    int    `json:"seats"`
+type flightSeats struct {
+	FlightID int64 `json:"flight_id"`
+	Seats    int   `json:"seats"`
 }
 
 func (h *flightHandler) Book(c *gin.Context) {
@@ -116,16 +126,23 @@ func (h *flightHandler) Book(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.Book(c, service.BookParams{
-		FlightID: req.Flights[0].FlightID,
-		Seats:    req.Flights[0].Seats,
-	}); err != nil {
+	params := service.BookParams{
+		Seats: make([]domain.FlightSeats, len(req.Flights)),
+	}
+	for i, f := range req.Flights {
+		params.Seats[i] = domain.FlightSeats{
+			FlightID: f.FlightID,
+			Seats:    f.Seats,
+		}
+	}
+
+	if err := h.service.Book(c, params); err != nil {
 		if errors.Is(err, domain.ErrFlightNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		} else if errors.Is(err, domain.ErrUnavailableFlightSeats) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		}
 		return
 	}

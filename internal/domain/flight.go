@@ -26,7 +26,7 @@ const (
 )
 
 type Flight struct {
-	ID                 string
+	ID                 int64
 	Number             string
 	DepartureAirportID AirportID
 	ArrivalAirportID   AirportID
@@ -39,7 +39,8 @@ type Flight struct {
 	Price              decimal.Decimal
 }
 
-type FlightPlan struct {
-	Flights []Flight
-	Price   decimal.Decimal
+type FlightPath struct {
+	Flights         []Flight
+	Price           decimal.Decimal
+	DurationSeconds int64
 }

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
+	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 
 	"github.com/jiazhen-lin/flight-booking/internal/domain"
@@ -23,7 +23,7 @@ func NewFlightPostgresRepository(db *gorm.DB) *flightPostgresRepository {
 }
 
 type FlightRow struct {
-	ID                 uuid.UUID           `gorm:"column:id;type:uuid;default:uuid_generate_v4()"`
+	ID                 int64               `gorm:"column:id;primary_key;autoIncrement"`
 	CreatedAt          time.Time           `gorm:"column:created_at"`
 	UpdatedAt          time.Time           `gorm:"column:updated_at"`
 	Number             string              `gorm:"column:number"`
@@ -46,7 +46,7 @@ func flightModelToDomain(rows []FlightRow) []domain.Flight {
 	flights := make([]domain.Flight, len(rows))
 	for i, row := range rows {
 		flights[i] = domain.Flight{
-			ID:                 row.ID.String(),
+			ID:                 row.ID,
 			Number:             row.Number,
 			DepartureAirportID: row.DepartureAirportID,
 			ArrivalAirportID:   row.ArrivalAirportID,
@@ -63,15 +63,25 @@ func flightModelToDomain(rows []FlightRow) []domain.Flight {
 }
 
 func (r *flightPostgresRepository) List(ctx context.Context, filter domain.ListFilter) ([]domain.Flight, error) {
+	query := r.db.WithContext(ctx).Where("status = ?", domain.FlightStatusEnabled)
+
+	if filter.AvailableSeats != nil {
+		if *filter.AvailableSeats {
+			query = query.Where("available_seats > 0")
+		} else {
+			query = query.Where("available_seats = 0")
+		}
+	}
+
+	if filter.CursorID != nil {
+		query = query.Where("id > ?", *filter.CursorID)
+	}
+
+	query = query.Where("departure_time BETWEEN ? AND ?", filter.DepartureTimeFrom, filter.DepartureTimeTo)
+	query = query.Order("id ASC").Limit(filter.Limit)
+
 	var rows []FlightRow
-	if err := r.db.WithContext(ctx).
-		Where("status = ?", domain.FlightStatusEnabled).
-		Where("departure_airport_id = ?", filter.DepartureAirportID).
-		Where("arrival_airport_id = ?", filter.ArrivalAirportID).
-		Where("departure_time BETWEEN ? AND ?", filter.DepartureTimeFrom, filter.DepartureTimeTo).
-		Order("departure_time ASC, id ASC").
-		Limit(filter.Limit).
-		Find(&rows).Error; err != nil {
+	if err := query.Find(&rows).Error; err != nil {
 		return nil, err
 	}
 
@@ -79,11 +89,9 @@ func (r *flightPostgresRepository) List(ctx context.Context, filter domain.ListF
 }
 
 type BookRow struct {
-	ID        uuid.UUID            `gorm:"column:id;type:uuid;default:uuid_generate_v4()"`
+	ID        int64                `gorm:"column:id;primary_key;autoIncrement"`
 	CreatedAt time.Time            `gorm:"column:created_at"`
 	UpdatedAt time.Time            `gorm:"column:updated_at"`
-	FlightID  uuid.UUID            `gorm:"column:flight_id"`
-	Seats     int                  `gorm:"column:seats"`
 	Status    domain.BookingStatus `gorm:"column:status"`
 }
 
@@ -91,45 +99,65 @@ func (r BookRow) TableName() string {
 	return "bookings"
 }
 
-func (r *flightPostgresRepository) Book(ctx context.Context, flightID string, seats int) error {
-	fid, err := uuid.Parse(flightID)
-	if err != nil {
-		return err
-	}
+type BookingSeatsRow struct {
+	ID        int64     `gorm:"column:id;primary_key;autoIncrement"`
+	CreatedAt time.Time `gorm:"column:created_at"`
+	UpdatedAt time.Time `gorm:"column:updated_at"`
+	BookingID int64     `gorm:"column:booking_id"`
+	FlightID  int64     `gorm:"column:flight_id"`
+	Seats     int       `gorm:"column:seats"`
+}
 
+func (r BookingSeatsRow) TableName() string {
+	return "booking_seats"
+}
+
+func (r *flightPostgresRepository) Book(ctx context.Context, seats []domain.FlightSeats) error {
 	if err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// insert a booking record
+		booking := BookRow{
+			Status: domain.BookingStatusEnabled,
+		}
+		if err := tx.Create(&booking).Error; err != nil {
+			return err
+		}
+		bookingID := booking.ID
+		logrus.Infof("bookingID: %d", bookingID)
+
 		// check flight id exists
-		var row FlightRow
-		if err := tx.Where("id = ?", flightID).
-			First(&row).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return domain.ErrFlightNotFound
+		for _, s := range seats {
+			var row FlightRow
+			if err := tx.Where("id = ?", s.FlightID).
+				First(&row).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return domain.ErrFlightNotFound
+				}
+				return err
 			}
-			return err
-		}
-		if row.AvailableSeats < seats {
-			return domain.ErrUnavailableFlightSeats
-		}
+			if row.AvailableSeats < s.Seats {
+				return domain.ErrUnavailableFlightSeats
+			}
 
-		// update flight available seats
-		result := tx.Model(&FlightRow{}).
-			Where("id = ?", flightID).
-			Where("available_seats >= ?", seats).
-			Update("available_seats", gorm.Expr("available_seats - ?", seats))
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected == 0 {
-			return domain.ErrUnavailableFlightSeats
-		}
+			// update flight available seats
+			result := tx.Model(&FlightRow{}).
+				Where("id = ?", s.FlightID).
+				Where("available_seats >= ?", s.Seats).
+				Update("available_seats", gorm.Expr("available_seats - ?", s.Seats))
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected == 0 {
+				return domain.ErrUnavailableFlightSeats
+			}
 
-		// create booking record
-		if err := tx.Create(&BookRow{
-			FlightID: fid,
-			Seats:    seats,
-			Status:   domain.BookingStatusEnabled,
-		}).Error; err != nil {
-			return err
+			// create booking seats record
+			if err := tx.Create(&BookingSeatsRow{
+				BookingID: bookingID,
+				FlightID:  s.FlightID,
+				Seats:     s.Seats,
+			}).Error; err != nil {
+				return err
+			}
 		}
 
 		return nil
